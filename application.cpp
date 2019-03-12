@@ -19,6 +19,71 @@
 using namespace std;
 enum { NONE, AMBIENT, DIFFUSE, SPECULAR, NUM_MODES };
 
+struct Particle {
+    float m; //mass
+    vec3 x; //position
+    vec3 v; //velocity
+    vec3 f; //force
+    float d; //duration
+    vec3 color;
+
+    Particle(float mass, vec3 pos, vec3 vel, vec3 force, vec3 col) : 
+    m(mass), x(pos), v(vel), f(force), d(0), color(col) {}
+
+    //updates v and x with a Forward Euler Step
+    void Euler_Step(float h) {
+	x += h * v;
+	v += h / m * f;
+    }
+
+    //reset force to 0 vector
+    void Reset_Forces() {
+	f.make_zero();
+    }
+
+    //reflect particle on ground and apply damping and restitution
+    void Handle_Collision(float damping, float coeff_restitution) {
+	if (x[1] < 0) {
+	    x[1] = 0;
+	    if (v[1] < 0) {
+	        v[2] *= -coeff_restitution;
+	        v[0] *= damping;
+	        v[1] *= damping;
+	    }
+	}
+    }
+};
+
+vector<Particle> particles;
+
+float random(float k,float l) {
+    float random = ((float) rand()) / (float) RAND_MAX;
+    float diff = l - k;
+    float r = random * diff;
+    return k + r;
+}
+
+void Add_Particles(int n) {
+    float m = 1;
+    vec3 col(255,255,0);
+    vec3 f;
+
+    for (int i = 0; i < n; ++i) {
+	vec3 x(random(-0.2,0.2), 0.05, random(-0.2,0.2));
+	vec3 v(10*x[0], random(1,10), 10*x[2]);
+	Particle p(m, x, v, f, col);
+	particles.push_back(p);
+    }
+}
+
+vec3 Get_Particle_Color(float d) {
+    if (d < 0.1) { return vec3(255,255,0); }
+    else if (d < 1.5) { return vec3(255,255*(1.5-d),0); }
+    else if (d < 2) { return vec3(255,0,0); }
+    else if (d < 3) { return vec3(255*(3-d),0.5,0.5); }
+    else { return vec3(0.5,0.5,0.5); }
+}
+
 void draw_grid(int dim);
 void draw_obj(obj *o, const gl_image_texture_map& textures);
 
@@ -48,6 +113,10 @@ application::~application()
 // triggered once after the OpenGL context is initialized
 void application::init_event()
 {
+
+    srand(static_cast<unsigned int>(clock()));
+
+    Add_Particles(10);
 
     cout << "CAMERA CONTROLS: \n  LMB: Rotate \n  MMB: Move \n  RMB: Zoom" << endl;
     cout << "KEYBOARD CONTROLS: \n";
@@ -121,15 +190,25 @@ void application::draw_event()
     if (!paused) {
         //
         //ADD NEW PARTICLES
+        Add_Particles(20);
         //
         //
         // SIMULATE YOUR PARTICLE HERE.
+        for (int i = 0; i < particles.size(); ++i) {
+	    particles.at(i).f += vec3(0, -particles.at(i).m * 9.8, 0);
+	    particles.at(i).Euler_Step(h);
+	    particles.at(i).Handle_Collision(0.5,0.5);
+	    particles.at(i).Reset_Forces();
+    	    particles.at(i).d += h;
+	    particles.at(i).color = Get_Particle_Color(particles.at(i).d);
+	}
         //
         //
         //
         // UPDATE THE COLOR OF THE PARTICLE DYNAMICALLY
         //
     }
+
 
     glLineWidth(2.0);
     glEnable(GL_COLOR_MATERIAL);
@@ -138,8 +217,14 @@ void application::draw_event()
         //
         // DRAW YOUR PARTICLE USING GL_LINES HERE
         //
-        // glVertex3f(...) endpoint 1
-        // glVertex3f(...) endpoint 2
+    for (int i = 1; i < particles.size(); ++i) {
+	vec3 color = particles.at(i).color;
+	vec3 start = particles.at(i).x;
+	vec3 end = start + 0.04f*particles.at(i).v;
+	glColor3f(color[0],color[1],color[2]);
+        glVertex3f(start[0], start[1], start[2]); //endpoint 1
+        glVertex3f(end[0], end[1], end[2]); //endpoint 2
+    }
         //
         //
     glEnd();
